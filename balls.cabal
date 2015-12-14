@@ -24,7 +24,9 @@ library
     gloss,
     linear,
     lens,
-    random
+    random,
+    monad-loops,
+    containers
 
 executable balls
   hs-source-dirs:      app
