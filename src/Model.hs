@@ -51,7 +51,7 @@ createBall = do
     }
 
 step :: ViewPort -> Float -> Model -> IO Model
-step vp dt m = return $ fst (foldl stepBalls ([],m) m)
+step _ dt balls = return $ fst (foldl stepBalls ([], balls) balls)
   where
     stepBalls :: (Model, Model) -> Ball -> (Model, Model)
     stepBalls (balls, b:balls') _ = do

@@ -9,7 +9,7 @@ import Control.Monad                          (replicateM)
 
 main :: IO ()
 main =  do
-  model <- replicateM 100 createBall
+  model <- replicateM 30 createBall
   simulateIO
     (InWindow "Balls" frame (50,  50))
     black
