@@ -21,6 +21,9 @@ data Ball = Ball {
 
 type Model = [Ball]
 
+gravity :: Float
+gravity = 0
+
 frame :: (Int, Int)
 frame = (600, 600)
 
@@ -62,13 +65,13 @@ drawModel m = do
       (fromIntegral (snd frame))
 
 step :: ViewPort -> Float -> Model -> IO Model
-step vp t m = return $ fst (foldl stepBalls ([],m) m)
+step vp dt m = return $ fst (foldl stepBalls ([],m) m)
   where
     stepBalls :: (Model, Model) -> Ball -> (Model, Model)
     stepBalls (balls, b:balls') _ = do
       let b'   = stepBall b
       let bmap = balls' <&> \b2 -> if checkBallCollision b' b2
-            then first Just $ resolveBallCollision b' b2
+            then first Just $ resolveBallCollision b' b2 dt
             else (Nothing, b2)
 
       let b'' = case catMaybes $ fst <$> bmap of {[] -> b'; x:xs -> x}
@@ -76,35 +79,47 @@ step vp t m = return $ fst (foldl stepBalls ([],m) m)
       (balls ++ [b''], snd <$> bmap)
 
     stepBall :: Ball -> Ball
-    stepBall b = b {v = v', position = p''}
+    stepBall b = b''
       where
-        p'  = position b + (v b ^* t)
-        v'  = resolveFrameCollision b $ checkFrameCollision b p'
-        p'' = position b + (v' ^* t)
+        a   = V2 0 (-gravity * r b)
+        dv  = a  ^* dt
+        v'  = v b + dv
+        p'  = position b + v' ^* dt
+        b'  = b {v = v', position = p'}
+        b'' = resolveFrameCollision b' dt $ checkFrameCollision b'
 
-checkFrameCollision :: Ball -> V2 Float -> V2 Bool
-checkFrameCollision b (V2 x y) = V2
+checkFrameCollision :: Ball -> V2 Bool
+checkFrameCollision b = V2
     (abs x + r b > (fromIntegral (fst frame) / 2))
     (abs y + r b > (fromIntegral (fst frame) / 2))
+    where
+      V2 x y = position b
 
-resolveFrameCollision :: Ball -> V2 Bool -> V2 Float
-resolveFrameCollision b m = v b * m'
-    where m' = fmap (\i -> if i then -1 else 1) m
+resolveFrameCollision :: Ball -> Float -> V2 Bool -> Ball
+resolveFrameCollision b dt cmap = b { v = v', position = p' }
+    where
+      vmap = fmap (\i -> if i then -1 else 1) cmap
+      v' = v b * vmap
+      p' = position b + v' ^* dt
 
 checkBallCollision :: Ball -> Ball -> Bool
 checkBallCollision b1 b2 = dist < (r b1 + r b2)
     where dist = mag (position b1 ^-^ position b2)
 
-resolveBallCollision :: Ball -> Ball -> (Ball, Ball)
-resolveBallCollision b1 b2 = (
-    b1 {v = v b1 - (2 * r b2 / (r b1 + r b2)) * (( dv  `vdot` dp ) / mag2 dp ) *^ dp },
-    b2 {v = v b2 - (2 * r b1 / (r b1 + r b2)) * (( dv' `vdot` dp') / mag2 dp') *^ dp'}
+resolveBallCollision :: Ball -> Ball -> Float -> (Ball, Ball)
+resolveBallCollision b1 b2 dt = (
+    b1 {v = v1', position = p1'},
+    b2 {v = v2', position = p2'}
   )
   where
     dv  = v b1 ^-^ v b2
-    dv' = v b2 ^-^ v b1
+    dv' = negate dv
     dp  = position b1 ^-^ position b2
-    dp' = position b2 ^-^ position b1
+    dp' = negate dp
+    v1' = v b1 - (2 * r b2 / (r b1 + r b2)) * (( dv  `vdot` dp ) / mag2 dp ) *^ dp
+    v2' = v b2 - (2 * r b1 / (r b1 + r b2)) * (( dv' `vdot` dp') / mag2 dp') *^ dp'
+    p1' = position b1 + v1' ^* dt
+    p2' = position b2 + v2' ^* dt
 
 vdot :: V2 Float -> V2 Float -> Float
 vdot (V2 x1 y1) (V2 x2 y2) = x1 * x2 + y1 * y2
