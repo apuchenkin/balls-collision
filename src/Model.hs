@@ -1,25 +1,16 @@
-module Main where
+module Model where
 
+import Linear.V2                  (V2 (..))
+import Graphics.Gloss.Data.Color  (Color (..))
 import Graphics.Gloss
 import Graphics.Gloss.Data.ViewPort
 import Graphics.Gloss.Interface.IO.Simulate (simulateIO)
-import Linear.V2          (V2 (..))
 import Linear.Vector      ((^-^), (^*), (*^))
 import Linear.Matrix      ((!*!))
 import Data.Maybe         (catMaybes)
 import Control.Lens.Lens  ((<&>))
 import Control.Arrow      (first)
 import System.Random      (randomRIO)
-import Control.Monad      (replicateM)
-
-data Ball = Ball {
-    ballColor :: Color,
-    v         :: V2 Float,
-    r         :: Float,
-    position  :: V2 Float
-  }
-
-type Model = [Ball]
 
 gravity :: Float
 gravity = 0
@@ -130,13 +121,11 @@ mag = sqrt . mag2
 mag2 :: V2 Float -> Float
 mag2 v = vdot v v
 
-main :: IO ()
-main =  do
-  model <- replicateM 30 createBall
-  simulateIO
-    (InWindow "Balls" frame (50,  50))
-    black
-    60
-    model
-    drawModel
-    step
+data Ball = Ball {
+    ballColor :: Color,
+    v         :: V2 Float,
+    r         :: Float,
+    position  :: V2 Float
+  }
+
+type Model = [Ball]
