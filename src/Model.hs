@@ -1,11 +1,9 @@
 module Model where
 
 import Utility
-import Linear.V2                  (V2 (..))
-import Graphics.Gloss.Data.Color  (Color (..))
-import Graphics.Gloss
-import Graphics.Gloss.Data.ViewPort
-import Graphics.Gloss.Interface.IO.Simulate (simulateIO)
+import Linear.V2                      (V2 (..))
+import Graphics.Gloss.Data.Color      (Color (..), makeColorI)
+import Graphics.Gloss.Data.ViewPort   (ViewPort (..))
 import Linear.Vector      ((^-^), (^*), (*^))
 import Linear.Matrix      ((!*!))
 import Data.Maybe         (catMaybes)
@@ -51,22 +49,6 @@ createBall = do
       r           = fromIntegral br,
       position    = V2 (fromIntegral x) (fromIntegral y)
     }
-
-drawBall :: Ball -> IO Picture
-drawBall b = return $ color (ballColor b) $ translate x y circle
-  where
-    V2 x y = position b
-    circle = circleSolid $ r b
-
-drawModel :: Model -> IO Picture
-drawModel m = do
-  pictures <- sequence $ initPath : (drawBall <$> m)
-  return $ Pictures pictures
-  where
-    initPath :: IO Picture
-    initPath = return $ color white $ polygon $ rectanglePath
-      (fromIntegral (fst frame))
-      (fromIntegral (snd frame))
 
 step :: ViewPort -> Float -> Model -> IO Model
 step vp dt m = return $ fst (foldl stepBalls ([],m) m)
