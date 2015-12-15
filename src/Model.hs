@@ -12,8 +12,9 @@ import Control.Arrow                  (first)
 import System.Random                  (randomRIO)
 import Control.Monad                  (join)
 import Control.Monad.Loops            (iterateUntilM)
-import Data.Sequence                  (Seq, fromList, update, elemIndexL, index)
+import Data.Sequence                  (Seq, fromList, update, elemIndexL, index, mapWithIndex)
 import Data.Foldable                  (toList)
+import qualified Data.Sequence as S   (drop)
 
 type Velocity = V2 Float
 type Position = V2 Float
@@ -45,7 +46,7 @@ data Ball = Ball {
 type Model = [Ball]
 
 gravity :: Float
-gravity = 10
+gravity = 0
 
 frame :: (Int, Int)
 frame = (600, 600)
@@ -77,7 +78,19 @@ step _ dt balls = do
     let dt     = fromJust mdt
     let sballs = fromList balls
     let emap   = getWallCollision dt <$> sballs
-    let emin   = case catMaybes $ toList emap of {[] -> Nothing; a -> Just $ minimum a}
+    let emap'  = flip mapWithIndex sballs $ \i b -> do
+          let s' = S.drop i sballs
+          let events = getBallCollision dt b <$> sballs
+          let emin   = case catMaybes $ toList events of {[] -> Nothing; a -> Just $ minimum a}
+          emin
+
+
+      --fst $ foldl (\(r, b:balls') _ -> (r ++ [b], balls')) sballs sballs -- getBallCollision dt
+    let emin   = case catMaybes $ toList emap  of {[] -> Nothing; a -> Just $ minimum a}
+    let emin'  = case catMaybes $ toList emap' of {[] -> Nothing; a -> Just $ minimum a}
+
+    print emin'
+
     let balls' = case emin of
           Nothing -> stepBall dt <$> balls
           Just  e -> do
@@ -106,24 +119,6 @@ resolveEvent e = case e of
   CY b t      -> b { v = v b * V2 1 (-1)}
   CB b1 b2 t  -> error "not supported"
 
-  -- resolveEvent e = e
-
-  -- $ fst (foldl stepBalls ([], balls) balls)
-  -- where
-  --   stepBalls :: (Model, Model) -> Ball -> (Model, Model)
-  --   stepBalls (balls, b:balls') _ = do
-  --     let b'   = stepBall b
-  --     let bmap = balls' <&> \b2 -> if checkBallCollision b' b2
-  --           then first Just $ resolveBallCollision b' b2 dt
-  --           else (Nothing, b2)
-  --
-  --     let b'' = case catMaybes $ fst <$> bmap of {[] -> b'; x:xs -> x}
-  --
-  --     (balls ++ [b''], snd <$> bmap)
-  --
-
-
-
 getWallCollision :: Float -> Ball -> Maybe Event
 getWallCollision dt b = e'
     where
@@ -140,8 +135,23 @@ getWallCollision dt b = e'
         else (if isInfinite ty then Nothing else Just (CY b ty))
       e'       = join $ e <&> (\ev -> if eventTime ev <= dt then Just ev else Nothing)
 
-getBallCollistion :: Ball -> Ball -> Float -> Maybe Float
-getBallCollistion b1 b2 dt = Nothing
+getBallCollision :: Float -> Ball -> Ball -> Maybe Event
+getBallCollision dt b1 b2 = e
+  where
+    dr  = position b2 ^-^ position b1
+    dv  = v b2 ^-^ v b1
+    dvr = dv `vdot` dr
+    rr  = (r b1 + r b2) ^ 2
+    d   = (dvr ^ 2) - mag2 dv * (mag2 dr - rr)
+
+    t  | dvr >= 0  = read "Infinity"
+       | d   <  0  = read "Infinity"
+       | otherwise = - (dvr + sqrt d) / mag2 dv
+
+    e  | isInfinite t = Nothing
+       | t  > dt      = Nothing
+       | otherwise    = Just $ CB b1 b2 t
+
 
 checkFrameCollision :: Ball -> V2 Bool
 checkFrameCollision b = V2
