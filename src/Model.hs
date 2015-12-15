@@ -10,6 +10,7 @@ import Data.Maybe                     (catMaybes, isNothing, fromJust)
 import Control.Lens.Lens              ((<&>))
 import Control.Arrow                  (first)
 import System.Random                  (randomRIO)
+import Control.Monad                  (join)
 import Control.Monad.Loops            (iterateUntilM)
 import Data.Sequence                  (Seq, fromList, update, elemIndexL, index)
 import Data.Foldable                  (toList)
@@ -87,7 +88,6 @@ step _ dt balls = do
             toList sballs''
 
     let dt' = emin <&> ((\t -> dt - t) . eventTime)
-    print (dt, dt')
     return (dt' , balls')) (Just dt, balls)
   return $ snd r
   where
@@ -95,7 +95,7 @@ step _ dt balls = do
     stepBall dt b = b'
       where
         a   = V2 0 (-gravity * r b)
-        dv  = a  ^* dt
+        dv  = a ^* dt
         v'  = v b + dv
         p'  = position b + v' ^* dt
         b'  = b {v = v', position = p'}
@@ -125,19 +125,20 @@ resolveEvent e = case e of
 
 
 getWallCollision :: Float -> Ball -> Maybe Event
-getWallCollision dt b = if tx <= ty then tx else ty
+getWallCollision dt b = e'
     where
       V2 vx vy = v b
       V2 x y   = position b
-      dx       = (fromIntegral (fst frame) / 2)  - (abs x + r b)
-      dy       = (fromIntegral (snd frame) / 2)  - (abs y + r b)
-      ty  | vy == 0             = Nothing
-          | (abs dy / abs vy) >= dt   = Nothing
-          | (abs dy / abs vy) < dt    = Just $ CY b (abs dy / abs vy)
-      tx  | vx == 0             = Nothing
-          | (abs dx / abs vx) >= dt   = Nothing
-          | (abs dx / abs vx) < dt    = Just $ CX b (abs dx / abs vx)
-
+      mdx      = fromIntegral (fst frame) / 2
+      mdy      = fromIntegral (snd frame) / 2
+      dx       = abs $ mdx + (if vx > 0 then -x else x) - r b
+      dy       = abs $ mdy + (if vy > 0 then -y else y) - r b
+      ty       = dy / abs vy
+      tx       = dx / abs vx
+      e        = if tx <= ty
+        then (if isInfinite tx then Nothing else Just (CX b tx))
+        else (if isInfinite ty then Nothing else Just (CY b ty))
+      e'       = join $ e <&> (\ev -> if eventTime ev <= dt then Just ev else Nothing)
 
 getBallCollistion :: Ball -> Ball -> Float -> Maybe Float
 getBallCollistion b1 b2 dt = Nothing
