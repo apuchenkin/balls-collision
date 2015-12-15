@@ -12,7 +12,7 @@ import Control.Arrow                  (first)
 import System.Random                  (randomRIO)
 import Control.Monad                  (join)
 import Control.Monad.Loops            (iterateUntilM)
-import Data.Sequence                  (Seq, fromList, update, elemIndexL, index, mapWithIndex)
+import Data.Sequence                  (Seq, fromList, update, elemIndexL, elemIndicesL, index, mapWithIndex, (><))
 import Data.Foldable                  (toList)
 import qualified Data.Sequence as S   (drop)
 
@@ -41,12 +41,12 @@ data Ball = Ball {
     v         :: Velocity,  -- velocity
     r         :: Float,     -- radius
     position  :: Position   -- position
-  }
+  } deriving Show
 
 type Model = [Ball]
 
 gravity :: Float
-gravity = 0
+gravity = 10
 
 frame :: (Int, Int)
 frame = (600, 600)
@@ -57,7 +57,7 @@ createBall = do
   let y0 = snd frame `div` 2
   vx <- randomRIO (-50, 50)
   vy <- randomRIO (-50, 50)
-  br <- randomRIO (5, 30)
+  br <- randomRIO (5, 20)
   x  <- randomRIO (br - x0, fst frame - br - x0)
   y  <- randomRIO (br - y0, snd frame - br - y0)
 
@@ -76,33 +76,27 @@ step :: ViewPort -> Float -> Model -> IO Model
 step _ dt balls = do
   r <- iterateUntilM (isNothing . fst) (\(mdt, balls) -> do
     let dt     = fromJust mdt
-    let sballs = fromList balls
-    let emap   = getWallCollision dt <$> sballs
-    let emap'  = flip mapWithIndex sballs $ \i b -> do
-          let s' = S.drop i sballs
-          let events = getBallCollision dt b <$> sballs
+    let emap   = getWallCollision dt <$> balls
+    let emap'  = flip mapWithIndex balls $ \i b -> do
+          let s' = S.drop i balls
+          let events = getBallCollision dt b <$> balls
           let emin   = case catMaybes $ toList events of {[] -> Nothing; a -> Just $ minimum a}
           emin
 
-
-      --fst $ foldl (\(r, b:balls') _ -> (r ++ [b], balls')) sballs sballs -- getBallCollision dt
-    let emin   = case catMaybes $ toList emap  of {[] -> Nothing; a -> Just $ minimum a}
-    let emin'  = case catMaybes $ toList emap' of {[] -> Nothing; a -> Just $ minimum a}
-
-    print emin'
+    let emin   = case catMaybes $ toList (emap >< emap') of {[] -> Nothing; a -> Just $ minimum a}
 
     let balls' = case emin of
           Nothing -> stepBall dt <$> balls
           Just  e -> do
-            let idx = fromJust $ elemIndexL emin emap
+            let events = case e of {CB {} -> emap'; _ -> emap}
+            let idx = elemIndicesL emin events
             let t   = eventTime e
-            let sballs' = stepBall t <$> sballs
-            let sballs'' = update idx (resolveEvent e) sballs'
-            toList sballs''
+            let balls' = stepBall t <$> balls
+            foldl (\r i -> update i (resolveEvent $ fromJust $ index events i) r) balls' idx
 
     let dt' = emin <&> ((\t -> dt - t) . eventTime)
-    return (dt' , balls')) (Just dt, balls)
-  return $ snd r
+    return (dt' , balls')) (Just dt, fromList balls)
+  return $ toList (snd r)
   where
     stepBall :: Float -> Ball -> Ball
     stepBall dt b = b'
@@ -117,7 +111,7 @@ resolveEvent :: Event -> Ball
 resolveEvent e = case e of
   CX b t      -> b { v = v b * V2 (-1) 1}
   CY b t      -> b { v = v b * V2 1 (-1)}
-  CB b1 b2 t  -> error "not supported"
+  CB b1 b2 t  -> fst $ resolveBallCollision b1 b2
 
 getWallCollision :: Float -> Ball -> Maybe Event
 getWallCollision dt b = e'
@@ -150,6 +144,7 @@ getBallCollision dt b1 b2 = e
 
     e  | isInfinite t = Nothing
        | t  > dt      = Nothing
+       | t  <= 0       = Nothing
        | otherwise    = Just $ CB b1 b2 t
 
 
@@ -171,11 +166,8 @@ checkBallCollision :: Ball -> Ball -> Bool
 checkBallCollision b1 b2 = dist < (r b1 + r b2)
     where dist = mag (position b1 ^-^ position b2)
 
-resolveBallCollision :: Ball -> Ball -> Float -> (Ball, Ball)
-resolveBallCollision b1 b2 dt = (
-    b1 {v = v1', position = p1'},
-    b2 {v = v2', position = p2'}
-  )
+resolveBallCollision :: Ball -> Ball -> (Ball, Ball)
+resolveBallCollision b1 b2 = (b1 {v = v1'}, b2 {v = v2'})
   where
     dv  = v b1 ^-^ v b2
     dv' = negate dv
@@ -183,5 +175,3 @@ resolveBallCollision b1 b2 dt = (
     dp' = negate dp
     v1' = v b1 - (2 * r b2 / (r b1 + r b2)) * (( dv  `vdot` dp ) / mag2 dp ) *^ dp
     v2' = v b2 - (2 * r b1 / (r b1 + r b2)) * (( dv' `vdot` dp') / mag2 dp') *^ dp'
-    p1' = position b1 + v1' ^* dt
-    p2' = position b2 + v2' ^* dt
