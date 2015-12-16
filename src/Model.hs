@@ -74,30 +74,12 @@ createBall = do
 
 step :: ViewPort -> Float -> Model -> IO Model
 step _ dt balls = do
-  r <- iterateUntilM (isNothing . fst) (\(mdt, balls) -> do
-    let dt     = fromJust mdt
-    let emap   = getWallCollision dt <$> balls
-    let emap'  = flip mapWithIndex balls $ \i b -> do
-          let s' = S.drop i balls
-          let events = getBallCollision dt b <$> balls
-          let emin   = case catMaybes $ toList events of {[] -> Nothing; a -> Just $ minimum a}
-          emin
-
-    let emin   = case catMaybes $ toList (emap >< emap') of {[] -> Nothing; a -> Just $ minimum a}
-
-    let balls' = case emin of
-          Nothing -> stepBall dt <$> balls
-          Just  e -> do
-            let events = case e of {CB {} -> emap'; _ -> emap}
-            let idx = elemIndicesL emin events
-            let t   = eventTime e
-            let balls' = stepBall t <$> balls
-            foldl (\r i -> update i (resolveEvent $ fromJust $ index events i) r) balls' idx
-
-    let dt' = emin <&> ((\t -> dt - t) . eventTime)
-    return (dt' , balls')) (Just dt, fromList balls)
+  r <- iterateUntilM (isNothing . fst) stepBalls (Just dt, fromList balls)
   return $ toList (snd r)
   where
+    listMin :: Ord a => [Maybe a] -> Maybe a
+    listMin list = case catMaybes list of {[] -> Nothing; a -> Just $ minimum a}
+
     stepBall :: Float -> Ball -> Ball
     stepBall dt b = b'
       where
@@ -106,6 +88,27 @@ step _ dt balls = do
         v'  = v b + dv
         p'  = position b + v' ^* dt
         b'  = b {v = v', position = p'}
+
+    stepBalls :: (Maybe Float, Seq Ball) -> IO (Maybe Float, Seq Ball)
+    stepBalls (mdt, balls) = return (mdt' , balls')
+      where
+        dt     = fromJust mdt
+        emap   = getWallCollision dt <$> balls
+        emap'  = flip mapWithIndex balls $ \i b -> do
+            let s' = S.drop i balls
+            let events = getBallCollision dt b <$> balls
+            listMin $ toList events
+
+        emin   = listMin $ toList (emap >< emap')
+        mdt'   = emin <&> ((\t -> dt - t) . eventTime)
+        balls' = case emin of
+            Nothing -> stepBall dt <$> balls
+            Just  e -> do
+              let events = case e of {CB {} -> emap'; _ -> emap}
+              let idx = elemIndicesL emin events
+              let t   = eventTime e
+              let balls' = stepBall t <$> balls
+              foldl (\r i -> update i (resolveEvent $ fromJust $ index events i) r) balls' idx
 
 resolveEvent :: Event -> Ball
 resolveEvent e = case e of
@@ -122,12 +125,13 @@ getWallCollision dt b = e'
       mdy      = fromIntegral (snd frame) / 2
       dx       = abs $ mdx + (if vx > 0 then -x else x) - r b
       dy       = abs $ mdy + (if vy > 0 then -y else y) - r b
-      ty       = dy / abs vy
-      tx       = dx / abs vx
-      e        = if tx <= ty
-        then (if isInfinite tx then Nothing else Just (CX b tx))
-        else (if isInfinite ty then Nothing else Just (CY b ty))
-      e'       = join $ e <&> (\ev -> if eventTime ev <= dt then Just ev else Nothing)
+      ex       = CX b $ dx / abs vx
+      ey       = CY b $ dy / abs vy
+      e        = minimum [ex,ey]
+      t        = eventTime e
+      e' | isInfinite t       = Nothing
+         | t > dt             = Nothing
+         | otherwise          = Just e
 
 getBallCollision :: Float -> Ball -> Ball -> Maybe Event
 getBallCollision dt b1 b2 = e
@@ -144,7 +148,7 @@ getBallCollision dt b1 b2 = e
 
     e  | isInfinite t = Nothing
        | t  > dt      = Nothing
-       | t  <= 0       = Nothing
+       | t  <= 0      = Nothing
        | otherwise    = Just $ CB b1 b2 t
 
 
