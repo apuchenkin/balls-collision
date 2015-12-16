@@ -95,7 +95,6 @@ step _ dt balls = do
         dt     = fromJust mdt
         emap   = getWallCollision dt <$> balls
         emap'  = flip mapWithIndex balls $ \i b -> do
-            let s' = S.drop i balls
             let events = getBallCollision dt b <$> balls
             listMin $ toList events
 
